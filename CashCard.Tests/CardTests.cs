@@ -15,12 +15,15 @@ namespace CashCard.Tests
     /// </remarks>
     public class CardTests
     {
+        private readonly string _number = "1234567812345678";
+        private readonly uint _pin = 1234;
+
         [Fact]
         public void CanCreate()
         {
-            var card = new Card(1234);
+            var card = new Card(_number, _pin);
 
-            card.Balance.Should().Be(0m);
+            card.Balance.Should().Be(0);
         }
 
         [Theory]
@@ -28,51 +31,74 @@ namespace CashCard.Tests
         [InlineData(100)]
         public void CanTopUp(decimal initialBalance)
         {
-            var card = new Card(1234, initialBalance);
+            var card = new Card(_number, _pin, initialBalance);
 
             var amount = 100;
 
-            card.TopUp(amount);
+            var result = card.TopUp(amount);
+
+            result.Should().Be(TopUpResult.Success);
             card.Balance.Should().Be(initialBalance + amount);
         }
 
-        /// <remarks>
-        /// Assumption made that a TopUp operation should only be possible with a positive amount.
-        /// Negatives make sense to disallow but requirements say 'arbitrary' which may include zero. - verify with Client
-        /// </summary>
         [Theory]
         [InlineData(0)]
         [InlineData(-1)]
-        public void TopUpNonPositiveAmountThrowsException(decimal amount)
+        public void TopUpNonPositiveAmountFails(decimal amount)
         {
-            var card = new Card(1234);
+            var card = new Card(_number, _pin);
 
-            Action topUpAction = () => card.TopUp(amount);
+            var result = card.TopUp(amount);
 
-            topUpAction.Should().Throw<ArgumentException>();
+            result.Should().Be(TopUpResult.InvalidAmount);
+
+            // Balance should not be affected.
+            card.Balance.Should().Be(0);
         }
 
         [Theory]
-        [InlineData(100, 50, true)]
-        [InlineData(50, 100, false)]
-        [InlineData(0, 1, false)]
-        public void WithdrawSucceedsWithAvailableFunds(decimal initialAmount, decimal withdrawalAmount, bool shouldSucceed)
+        [InlineData(100, 50, WithdrawResult.Success)]
+        [InlineData(50, 100, WithdrawResult.InsufficientFunds)]
+        [InlineData(0, 1, WithdrawResult.InsufficientFunds)]
+        public void WithdrawSucceedsWithAvailableFunds(decimal initialAmount, decimal withdrawalAmount, WithdrawResult expectedResult)
         {
-            var card = new Card(1234, initialAmount);
+            var card = new Card(_number, _pin, initialAmount);
 
-            var result = card.Withdraw(withdrawalAmount, 1234);
+            var actualResult = card.Withdraw(withdrawalAmount, _pin);
 
-            result.Should().Be(shouldSucceed);
+            actualResult.Should().Be(expectedResult);
+
+            // Balance should only be affected if the withdraw succeeded.
+            if (actualResult == WithdrawResult.Success)
+                card.Balance.Should().Be(initialAmount - withdrawalAmount);
+            else
+                card.Balance.Should().Be(initialAmount);
+        }
+
+        [Fact]
+        public void WithdrawNonPositiveAmountFails()
+        {
+            var card = new Card(_number, _pin, 100);
+
+            var actualResult = card.Withdraw(-50, _pin);
+
+            actualResult.Should().Be(WithdrawResult.InvalidAmount);
+
+            // Balance should not be affected.
+            card.Balance.Should().Be(100);
         }
 
         [Fact]
         public void WithdrawFailsWithoutMatchingPin()
         {
-            var card = new Card(1234, 100);
+            var card = new Card(_number, _pin, 100);
 
             var result = card.Withdraw(50, 0000);
 
-            result.Should().BeFalse();
+            result.Should().Be(WithdrawResult.IncorrectPin);
+
+            // Balance should not be affected.
+            card.Balance.Should().Be(100);
         }
     }
 }
